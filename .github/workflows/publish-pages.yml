@@ -1,0 +1,60 @@
+name: Publish GitHub Pages ZIP PoC
+
+on:
+  workflow_dispatch:
+
+# Deny all permissions unless a job explicitly needs them.
+permissions: {}
+
+concurrency:
+  group: github-pages-poc
+  cancel-in-progress: false
+
+jobs:
+  validate-and-package:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - name: Check out test repository
+        uses: actions/checkout@v6
+
+      - name: Validate ZIP and safely extract the demo
+        run: >-
+          python3 scripts/safe_extract.py
+          fixtures/demo-work.zip
+          --dest _site/works/zip-demo
+
+      - name: Verify relative HTML and CSS asset paths
+        run: python3 scripts/check_relative_assets.py _site/works/zip-demo
+
+      - name: Add Pages site landing page
+        run: |
+          mkdir -p _site
+          cp site/index.html _site/index.html
+          touch _site/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload complete Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref_name == github.event.repository.default_branch
+    needs: validate-and-package
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the complete Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
